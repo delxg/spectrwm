@@ -396,6 +396,7 @@ int		 region_padding = 0;
 int		 tile_gap = 0;
 bool		 java_workaround = true;
 bool		 verbose_layout = false;
+bool		 track_pid_ws = true;
 #ifdef SWM_DEBUG
 bool		 debug_enabled;
 time_t		 time_started;
@@ -3780,32 +3781,34 @@ spawn(int ws_idx, union arg *args, bool close_fd)
 
 	close(xcb_get_file_descriptor(conn));
 
-	if ((ret = getenv("LD_PRELOAD"))) {
-		if (asprintf(&ret, "%s:%s", SWM_LIB, ret) == -1) {
-			warn("spawn: asprintf LD_PRELOAD");
+	if (track_pid_ws) {
+		if ((ret = getenv("LD_PRELOAD"))) {
+			if (asprintf(&ret, "%s:%s", SWM_LIB, ret) == -1) {
+				warn("spawn: asprintf LD_PRELOAD");
+				_exit(1);
+			}
+			setenv("LD_PRELOAD", ret, 1);
+			free(ret);
+		} else {
+			setenv("LD_PRELOAD", SWM_LIB, 1);
+		}
+
+		if (asprintf(&ret, "%d", ws_idx) == -1) {
+			warn("spawn: asprintf SWM_WS");
 			_exit(1);
 		}
-		setenv("LD_PRELOAD", ret, 1);
+		setenv("_SWM_WS", ret, 1);
 		free(ret);
-	} else {
-		setenv("LD_PRELOAD", SWM_LIB, 1);
-	}
+		ret = NULL;
 
-	if (asprintf(&ret, "%d", ws_idx) == -1) {
-		warn("spawn: asprintf SWM_WS");
-		_exit(1);
+		if (asprintf(&ret, "%d", getpid()) == -1) {
+			warn("spawn: asprintf _SWM_PID");
+			_exit(1);
+		}
+		setenv("_SWM_PID", ret, 1);
+		free(ret);
+		ret = NULL;
 	}
-	setenv("_SWM_WS", ret, 1);
-	free(ret);
-	ret = NULL;
-
-	if (asprintf(&ret, "%d", getpid()) == -1) {
-		warn("spawn: asprintf _SWM_PID");
-		_exit(1);
-	}
-	setenv("_SWM_PID", ret, 1);
-	free(ret);
-	ret = NULL;
 
 	if (setsid() == -1) {
 		warn("spawn: setsid");
@@ -8929,6 +8932,7 @@ enum {
 	SWM_S_STACK_ENABLED,
 	SWM_S_TERM_WIDTH,
 	SWM_S_TILE_GAP,
+	SWM_S_TRACK_PID_WS,
 	SWM_S_URGENT_COLLAPSE,
 	SWM_S_URGENT_ENABLED,
 	SWM_S_VERBOSE_LAYOUT,
@@ -9136,6 +9140,9 @@ setconfvalue(const char *selector, const char *value, int flags)
 		break;
 	case SWM_S_TILE_GAP:
 		tile_gap = atoi(value);
+		break;
+	case SWM_S_TRACK_PID_WS:
+		track_pid_ws = atoi(value);
 		break;
 	case SWM_S_URGENT_COLLAPSE:
 		urgent_collapse = (atoi(value) != 0);
@@ -9495,6 +9502,7 @@ struct config_option configopt[] = {
 	{ "tile_gap",			setconfvalue,	SWM_S_TILE_GAP },
 	{ "title_class_enabled",	setconfvalue,	SWM_S_WINDOW_CLASS_ENABLED }, /* For backwards compat. */
 	{ "title_name_enabled",		setconfvalue,	SWM_S_WINDOW_INSTANCE_ENABLED }, /* For backwards compat. */
+	{ "track_pid_ws",		setconfvalue,	SWM_S_TRACK_PID_WS },
 	{ "urgent_collapse",		setconfvalue,	SWM_S_URGENT_COLLAPSE },
 	{ "urgent_enabled",		setconfvalue,	SWM_S_URGENT_ENABLED },
 	{ "verbose_layout",		setconfvalue,	SWM_S_VERBOSE_LAYOUT },
