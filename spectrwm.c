@@ -499,6 +499,7 @@ void	vertical_stack(struct workspace *, struct swm_geometry *);
 void	horizontal_config(struct workspace *, int);
 void	horizontal_stack(struct workspace *, struct swm_geometry *);
 void	max_stack(struct workspace *, struct swm_geometry *);
+void	max_config(struct workspace *, int);
 void	plain_stacker(struct workspace *);
 void	fancy_stacker(struct workspace *);
 
@@ -513,7 +514,7 @@ struct layout {
 	/* stack,		configure */
 	{ vertical_stack,	vertical_config,	0,	plain_stacker },
 	{ horizontal_stack,	horizontal_config,	0,	plain_stacker },
-	{ max_stack,		NULL,
+	{ max_stack,		max_config,
 	  SWM_L_MAPONFOCUS | SWM_L_FOCUSPREV,			plain_stacker },
 	{ NULL,			NULL,			0,	NULL  },
 };
@@ -600,6 +601,16 @@ struct swm_screen {
 };
 struct swm_screen	*screens;
 
+struct layout_config {
+	bool configured;
+	int layout;
+	int master_grow;
+	int master_add;
+	int stack_inc;
+	int always_raise;
+	bool apply_flip;
+} initial_layouts[SWM_WS_MAX];
+
 /* args to functions */
 union arg {
 	int			id;
@@ -616,7 +627,6 @@ union arg {
 #define SWM_ARG_ID_MASTERADD	(22)
 #define SWM_ARG_ID_MASTERDEL	(23)
 #define SWM_ARG_ID_FLIPLAYOUT	(24)
-#define SWM_ARG_ID_STACKRESET	(30)
 #define SWM_ARG_ID_STACKINIT	(31)
 #define SWM_ARG_ID_STACKBALANCE	(32)
 #define SWM_ARG_ID_CYCLEWS_UP	(40)
@@ -903,7 +913,7 @@ enum actionid {
 	FN_STACK_BALANCE,
 	FN_STACK_INC,
 	FN_STACK_DEC,
-	FN_STACK_RESET,
+	FN_STACK_INIT,
 	FN_SWAP_MAIN,
 	FN_SWAP_NEXT,
 	FN_SWAP_PREV,
@@ -1101,6 +1111,7 @@ void	 grab_windows(void);
 void	 grabbuttons(void);
 void	 grabkeys(void);
 void	 iconify(struct binding *, struct swm_region *, union arg *);
+void	 initlayout(struct workspace *);
 bool	 isxlfd(char *);
 bool	 keybindreleased(struct binding *, xcb_key_release_event_t *);
 void	 keypress(xcb_key_press_event_t *);
@@ -4961,14 +4972,15 @@ stack_config(struct binding *bp, struct swm_region *r, union arg *args)
 	DNPRINTF(SWM_D_STACK, "stack_config: id: %d workspace: %d\n",
 	    args->id, ws->idx);
 
-	if (clear_maximized(ws) > 0)
-		stack(r);
-
-	if (ws->cur_layout->l_config != NULL)
+	if (args->id == SWM_ARG_ID_STACKINIT) {
+		initlayout(ws);
+	} else {
 		ws->cur_layout->l_config(ws, args->id);
+	}
 
-	if (args->id != SWM_ARG_ID_STACKINIT)
-		stack(r);
+	clear_maximized(ws);
+	stack(r);
+
 	bar_draw(r->bar);
 
 	center_pointer(r);
@@ -5414,7 +5426,6 @@ vertical_config(struct workspace *ws, int id)
 	    id, ws->idx);
 
 	switch (id) {
-	case SWM_ARG_ID_STACKRESET:
 	case SWM_ARG_ID_STACKINIT:
 		ws->l_state.vertical_msize = SWM_V_SLICE / 2;
 		ws->l_state.vertical_mwin = 1;
@@ -5467,7 +5478,6 @@ horizontal_config(struct workspace *ws, int id)
 	DNPRINTF(SWM_D_STACK, "horizontal_config: workspace: %d\n", ws->idx);
 
 	switch (id) {
-	case SWM_ARG_ID_STACKRESET:
 	case SWM_ARG_ID_STACKINIT:
 		ws->l_state.horizontal_mwin = 1;
 		ws->l_state.horizontal_msize = SWM_H_SLICE / 2;
@@ -5558,10 +5568,6 @@ max_stack(struct workspace *ws, struct swm_geometry *g)
 
 		/* Set maximized flag for all maxed windows. */
 		if (!MAXIMIZED(w)) {
-			/* Preserve floating geometry. */
-			if (ABOVE(w))
-				store_float_geom(w);
-
 			ewmh_apply_flags(w, w->ewmh_flags | EWMH_F_MAXIMIZED);
 			ewmh_update_wm_state(w);
 		}
@@ -5606,6 +5612,16 @@ max_stack(struct workspace *ws, struct swm_geometry *g)
 	TAILQ_FOREACH(w, &ws->stack, stack_entry)
 		if (!ICONIC(w))
 			map_window(w);
+}
+
+void
+max_config(struct workspace *ws, int id)
+{
+	/* suppress unused warning since vars are needed */
+	(void)ws;
+	(void)id;
+
+	DNPRINTF(SWM_D_STACK, "max_config: workspace: %d (noop)\n", ws->idx);
 }
 
 void
@@ -7525,7 +7541,7 @@ struct action {
 	{ "stack_balance",	stack_config,	0, {.id = SWM_ARG_ID_STACKBALANCE} },
 	{ "stack_inc",		stack_config,	0, {.id = SWM_ARG_ID_STACKINC} },
 	{ "stack_dec",		stack_config,	0, {.id = SWM_ARG_ID_STACKDEC} },
-	{ "stack_reset",	stack_config,	0, {.id = SWM_ARG_ID_STACKRESET} },
+	{ "stack_reset",	stack_config,	0, {.id = SWM_ARG_ID_STACKINIT} },
 	{ "swap_main",		swapwin,	0, {.id = SWM_ARG_ID_SWAPMAIN} },
 	{ "swap_next",		swapwin,	0, {.id = SWM_ARG_ID_SWAPNEXT} },
 	{ "swap_prev",		swapwin,	0, {.id = SWM_ARG_ID_SWAPPREV} },
@@ -8307,7 +8323,7 @@ setup_keybindings(void)
 	BINDKEYSPAWN(MODSHIFT,	XK_Return,		"term");
 	BINDKEY(MODSHIFT,	XK_comma,		FN_STACK_INC);
 	BINDKEY(MODSHIFT,	XK_period,		FN_STACK_DEC);
-	BINDKEY(MODSHIFT,	XK_space,		FN_STACK_RESET);
+	BINDKEY(MODSHIFT,	XK_space,		FN_STACK_INIT);
 	BINDKEY(MODKEY,		XK_Return,		FN_SWAP_MAIN);
 	BINDKEY(MODSHIFT,	XK_j,			FN_SWAP_NEXT);
 	BINDKEY(MODSHIFT,	XK_k,			FN_SWAP_PREV);
@@ -9369,7 +9385,7 @@ int
 setlayout(const char *selector, const char *value, int flags)
 {
 	struct workspace	*ws;
-	int			ws_id, i, x, mg, ma, si, ar;
+	int			ws_id, i, mg, ma, si, ar;
 	int			st = SWM_V_STACK, num_screens;
 	char			s[1024];
 	bool			f = false;
@@ -9377,9 +9393,6 @@ setlayout(const char *selector, const char *value, int flags)
 	/* suppress unused warnings since vars are needed */
 	(void)selector;
 	(void)flags;
-
-	if (getenv("SWM_STARTED"))
-		return (0);
 
 	bzero(s, sizeof s);
 	if (sscanf(value, "ws[%d]:%d:%d:%d:%d:%1023c",
@@ -9403,46 +9416,69 @@ setlayout(const char *selector, const char *value, int flags)
 		f = true;
 	} else if (strcasecmp(s, "fullscreen") == 0)
 		st = SWM_MAX_STACK;
-	else
+	else {
 		errx(1, "invalid layout entry, should be 'ws[<idx>]:"
 		    "<master_grow>:<master_add>:<stack_inc>:<always_raise>:"
 		    "<type>'");
-
-	num_screens = get_screen_count();
-	for (i = 0; i < num_screens; i++) {
-		ws = (struct workspace *)&screens[i].ws;
-		ws[ws_id].cur_layout = &layouts[st];
-
-		ws[ws_id].always_raise = (ar != 0);
-		if (st == SWM_MAX_STACK)
-			continue;
-
-		/* master grow */
-		for (x = 0; x < abs(mg); x++) {
-			ws[ws_id].cur_layout->l_config(&ws[ws_id],
-			    mg >= 0 ?  SWM_ARG_ID_MASTERGROW :
-			    SWM_ARG_ID_MASTERSHRINK);
-		}
-		/* master add */
-		for (x = 0; x < abs(ma); x++) {
-			ws[ws_id].cur_layout->l_config(&ws[ws_id],
-			    ma >= 0 ?  SWM_ARG_ID_MASTERADD :
-			    SWM_ARG_ID_MASTERDEL);
-		}
-		/* stack inc */
-		for (x = 0; x < abs(si); x++) {
-			ws[ws_id].cur_layout->l_config(&ws[ws_id],
-			    si >= 0 ?  SWM_ARG_ID_STACKINC :
-			    SWM_ARG_ID_STACKDEC);
-		}
-		/* Apply flip */
-		if (f) {
-			ws[ws_id].cur_layout->l_config(&ws[ws_id],
-			    SWM_ARG_ID_FLIPLAYOUT);
-		}
+		return 0;
 	}
 
-	return (0);
+	initial_layouts[ws_id].configured = true;
+	initial_layouts[ws_id].layout = st;
+	initial_layouts[ws_id].master_grow = mg;
+	initial_layouts[ws_id].master_add = ma;
+	initial_layouts[ws_id].stack_inc = si;
+	initial_layouts[ws_id].always_raise = ar;
+	initial_layouts[ws_id].apply_flip = f;
+
+	num_screens = get_screen_count();
+	for (i = 0; i < num_screens; ++i) {
+		ws = &screens[i].ws[ws_id];
+		initlayout(ws);
+	}
+
+	return 0;
+}
+
+void
+initlayout(struct workspace *ws)
+{
+	int			i, ws_id;
+
+	ws_id = ws->idx;
+
+	if (!initial_layouts[ws_id].configured)
+		return;
+
+	ws->cur_layout = &layouts[initial_layouts[ws_id].layout];
+
+	ws->cur_layout->l_config(ws, SWM_ARG_ID_STACKINIT);
+
+	ws->always_raise = (initial_layouts[ws_id].always_raise != 0);
+
+	/* master grow */
+	for (i = 0; i < abs(initial_layouts[ws_id].master_grow); i++) {
+		ws->cur_layout->l_config(ws,
+		    initial_layouts[ws_id].master_grow >= 0 ?  SWM_ARG_ID_MASTERGROW :
+		    SWM_ARG_ID_MASTERSHRINK);
+	}
+	/* master add */
+	for (i = 0; i < abs(initial_layouts[ws_id].master_add); i++) {
+		ws->cur_layout->l_config(ws,
+		    initial_layouts[ws_id].master_add >= 0 ?  SWM_ARG_ID_MASTERADD :
+		    SWM_ARG_ID_MASTERDEL);
+	}
+	/* stack inc */
+	for (i = 0; i < abs(initial_layouts[ws_id].stack_inc); i++) {
+		ws->cur_layout->l_config(ws,
+		    initial_layouts[ws_id].stack_inc >= 0 ?  SWM_ARG_ID_STACKINC :
+		    SWM_ARG_ID_STACKDEC);
+	}
+	/* Apply flip */
+	if (initial_layouts[ws_id].apply_flip) {
+		ws->cur_layout->l_config(ws,
+		    SWM_ARG_ID_FLIPLAYOUT);
+	}
 }
 
 /* config options */
@@ -11915,9 +11951,7 @@ setup_screens(void)
 			TAILQ_INIT(&ws->unmanagedlist);
 
 			for (k = 0; layouts[k].l_stack != NULL; k++)
-				if (layouts[k].l_config != NULL)
-					layouts[k].l_config(ws,
-					    SWM_ARG_ID_STACKINIT);
+				layouts[k].l_config(ws, SWM_ARG_ID_STACKINIT);
 			ws->cur_layout = &layouts[0];
 			ws->cur_layout->l_string(ws);
 		}
