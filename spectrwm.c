@@ -988,7 +988,6 @@ void	 bar_toggle(struct binding *, struct swm_region *, union arg *);
 void	 bar_urgent(char *, size_t);
 void	 bar_window_class(char *, size_t, struct swm_region *);
 void	 bar_window_class_instance(char *, size_t, struct swm_region *);
-void	 bar_window_float(char *, size_t, struct swm_region *);
 void	 bar_window_instance(char *, size_t, struct swm_region *);
 void	 bar_window_name(char *, size_t, struct swm_region *);
 void	 bar_window_state(char *, size_t, struct swm_region *);
