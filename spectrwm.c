@@ -1003,6 +1003,7 @@ void	 bar_window_instance(char *, size_t, struct swm_region *);
 void	 bar_window_name(char *, size_t, struct swm_region *);
 void	 bar_window_state(char *, size_t, struct swm_region *);
 void	 bar_workspace_name(char *, size_t, struct swm_region *);
+void	 bar_workspace_state(char *, size_t, struct swm_region *);
 int	 binding_cmp(struct binding *, struct binding *);
 void	 binding_insert(uint16_t, enum binding_type, uint32_t, enum actionid,
 	     uint32_t, const char *);
@@ -2509,6 +2510,44 @@ bar_workspace_name(char *s, size_t sz, struct swm_region *r)
 		strlcat(s, r->ws->name, sz);
 }
 
+void
+bar_workspace_state(char *s, size_t sz, struct swm_region *r)
+{
+	struct ws_win		*win;
+	int			i, j, num_screens;
+	bool			used_workspaces[SWM_WS_MAX];
+	char			tmp[8];
+	int                     first = 1;
+	char                    *fmt;
+
+	if (r == NULL || r->ws == NULL)
+		return;
+
+	for (i = 0; i < SWM_WS_MAX; ++i)
+		used_workspaces[i] = false;
+
+	num_screens = get_screen_count();
+	for (i = 0; i < num_screens; i++)
+		for (j = 0; j < workspace_limit; j++)
+			TAILQ_FOREACH(win, &screens[i].ws[j].winlist, entry)
+				++used_workspaces[win->ws->idx];
+
+	for (i = 0; i < SWM_WS_MAX; ++i) {
+		fmt = NULL;
+		if (i == r->ws->idx) {
+			fmt = " [%d]";
+		} else if (used_workspaces[i]) {
+			fmt = " %d";
+		}
+		if (fmt) {
+			fmt = fmt + first;
+			first = 0;
+			snprintf(tmp, sizeof tmp, fmt, i + 1);
+			strlcat(s, tmp, sz);
+		}
+	}
+}
+
 /* build the default bar format according to the defined enabled options */
 void
 bar_fmt(const char *fmtexp, char *fmtnew, struct swm_region *r, size_t sz)
@@ -2630,6 +2669,9 @@ bar_replace_seq(char *fmt, char *fmtrep, struct swm_region *r, size_t *offrep,
 		break;
 	case 'I':
 		snprintf(tmp, sizeof tmp, "%d", r->ws->idx + 1);
+		break;
+	case 'i':
+		bar_workspace_state(tmp, sizeof tmp, r);
 		break;
 	case 'M':
 		count = 0;
