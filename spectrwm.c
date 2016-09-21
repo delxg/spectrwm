@@ -999,6 +999,7 @@ void	 bar_toggle(struct binding *, struct swm_region *, union arg *);
 void	 bar_urgent(char *, size_t);
 void	 bar_window_class(char *, size_t, struct swm_region *);
 void	 bar_window_class_instance(char *, size_t, struct swm_region *);
+void	 bar_window_index_count(char *, size_t, struct swm_region *);
 void	 bar_window_instance(char *, size_t, struct swm_region *);
 void	 bar_window_name(char *, size_t, struct swm_region *);
 void	 bar_window_state(char *, size_t, struct swm_region *);
@@ -2432,6 +2433,30 @@ bar_window_class_instance(char *s, size_t sz, struct swm_region *r)
 }
 
 void
+bar_window_index_count(char *s, size_t sz, struct swm_region *r)
+{
+	struct ws_win		*w;
+	int			count, index;
+
+	if (r == NULL || r->ws == NULL || r->ws->focus == NULL) {
+		strlcat(s, "0/0", sz);
+		return;
+	}
+
+	count = 0;
+	index = 0;
+
+	TAILQ_FOREACH(w, &r->ws->winlist, entry) {
+		++count;
+		if (w->id == r->ws->focus->id) {
+			index = count;
+		}
+	}
+
+	snprintf(s, sz, "%d/%d", index, count);
+}
+
+void
 bar_window_state(char *s, size_t sz, struct swm_region *r)
 {
 	if (r == NULL || r ->ws == NULL || r->ws->focus == NULL)
@@ -2683,6 +2708,9 @@ bar_replace_seq(char *fmt, char *fmtrep, struct swm_region *r, size_t *offrep,
 		break;
 	case 'N':
 		snprintf(tmp, sizeof tmp, "%d", r->s->idx + 1);
+		break;
+	case 'p':
+		bar_window_index_count(tmp, sizeof tmp, r);
 		break;
 	case 'P':
 		bar_window_class_instance(tmp, sizeof tmp, r);
