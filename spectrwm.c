@@ -248,7 +248,8 @@ uint32_t		swm_debug = 0
 #define MAXIMIZED(w)		(MAXIMIZED_VERT(w) || MAXIMIZED_HORZ(w))
 #define MANUAL(w)		((w)->ewmh_flags & SWM_F_MANUAL)
 #define TRANS(w)		((w)->transient != XCB_WINDOW_NONE)
-#define FLOATING(w)		(ABOVE(w) || TRANS(w) || FULLSCREEN(w) ||      \
+#define FLOATING(w)		(ABOVE(w) || TRANS(w))
+#define FLOATINGFULLMAX(w)	(ABOVE(w) || TRANS(w) || FULLSCREEN(w) ||      \
     MAXIMIZED(w))
 
 /* Constrain Window flags */
@@ -3357,13 +3358,13 @@ config_win(struct ws_win *win, xcb_configure_request_event_t *ev)
 }
 
 int
-count_win(struct workspace *ws, bool count_transient)
+count_win(struct workspace *ws, bool count_floating)
 {
 	struct ws_win		*win;
 	int			count = 0;
 
 	TAILQ_FOREACH(win, &ws->winlist, entry) {
-		if (!count_transient && FLOATING(win))
+		if (!count_floating && FLOATING(win))
 			continue;
 		if (ICONIC(win))
 			continue;
@@ -5362,7 +5363,7 @@ stack_master(struct workspace *ws, struct swm_geometry *g, int rot, bool flip)
 		if (ICONIC(win))
 			continue;
 
-		if (FLOATING(win)) {
+		if (FLOATINGFULLMAX(win)) {
 			update_floater(win);
 			continue;
 		}
@@ -5600,15 +5601,13 @@ max_stack(struct workspace *ws, struct swm_geometry *g)
 {
 	struct swm_geometry	gg = *g;
 	struct ws_win		*w, *win = NULL, *parent = NULL, *tmpw;
-	int			winno;
 
 	DNPRINTF(SWM_D_STACK, "max_stack: workspace: %d\n", ws->idx);
 
 	if (ws == NULL)
 		return;
 
-	winno = count_win(ws, false);
-	if (winno == 0 && count_win(ws, true) == 0)
+	if (count_win(ws, true) == 0)
 		return;
 
 	/* Figure out which top level window should be visible. */
