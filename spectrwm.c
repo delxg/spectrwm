@@ -1740,19 +1740,14 @@ ewmh_apply_flags(struct ws_win *win, uint32_t pending)
 	}
 
 	if (changed & EWMH_F_ABOVE) {
-		if (ws->cur_layout != &layouts[SWM_MAX_STACK]) {
-			if (ABOVE(win))
-				load_float_geom(win);
-			else if (!MAXIMIZED(win))
-				store_float_geom(win);
+		if (ABOVE(win))
+			load_float_geom(win);
+		else if (!MAXIMIZED(win))
+			store_float_geom(win);
 
-			win->ewmh_flags &= ~EWMH_F_MAXIMIZED;
-			changed &= ~EWMH_F_MAXIMIZED;
-			raise_window(win);
-		} else {
-			/* Revert. */
-			win->ewmh_flags ^= EWMH_F_ABOVE & pending;
-		}
+		win->ewmh_flags &= ~EWMH_F_MAXIMIZED;
+		changed &= ~EWMH_F_MAXIMIZED;
+		raise_window(win);
 	}
 
 	if (changed & EWMH_F_MAXIMIZED) {
@@ -4666,9 +4661,6 @@ swapwin(struct binding *bp, struct swm_region *r, union arg *args)
 		goto out;
 	}
 
-	if (r->ws->cur_layout == &layouts[SWM_MAX_STACK])
-		return;
-
 	clear_maximized(r->ws);
 
 	source = cur_focus;
@@ -5630,7 +5622,7 @@ max_stack(struct workspace *ws, struct swm_geometry *g)
 		if (ICONIC(w))
 			continue;
 
-		if (TRANS(w)) {
+		if (TRANS(w) || ABOVE(w)) {
 			update_floater(w);
 			continue;
 		}
@@ -7035,8 +7027,8 @@ resize_win(struct ws_win *win, struct binding *bp, int opt)
 	if (FULLSCREEN(win))
 		return;
 
-	/* In max_stack mode, should only resize transients. */
-	if (win->ws->cur_layout == &layouts[SWM_MAX_STACK] && !TRANS(win))
+	/* In max_stack mode, should only resize transients/floating. */
+	if (win->ws->cur_layout == &layouts[SWM_MAX_STACK] && !TRANS(win) && !ABOVE(win))
 		return;
 
 	DNPRINTF(SWM_D_EVENT, "resize: win %#x, floating: %s, "
@@ -7323,10 +7315,6 @@ move_win(struct ws_win *win, struct binding *bp, int opt)
 
 	DNPRINTF(SWM_D_EVENT, "move: win %#x, floating: %s, transient: "
 	    "%#x\n", win->id, YESNO(ABOVE(win)), win->transient);
-
-	/* in max_stack mode should only move transients */
-	if (win->ws->cur_layout == &layouts[SWM_MAX_STACK] && !TRANS(win))
-		return;
 
 	if (!(ABOVE(win) || TRANS(win)) || MAXIMIZED(win)) {
 		store_float_geom(win);
