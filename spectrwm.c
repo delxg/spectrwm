@@ -248,7 +248,8 @@ uint32_t		swm_debug = 0
 #define MAXIMIZED(w)		(MAXIMIZED_VERT(w) || MAXIMIZED_HORZ(w))
 #define MANUAL(w)		((w)->ewmh_flags & SWM_F_MANUAL)
 #define TRANS(w)		((w)->transient != XCB_WINDOW_NONE)
-#define FLOATING(w)		(ABOVE(w) || TRANS(w) || FULLSCREEN(w) ||      \
+#define FLOATING(w)		(ABOVE(w) || TRANS(w))
+#define FLOATINGFULLMAX(w)	(ABOVE(w) || TRANS(w) || FULLSCREEN(w) ||      \
     MAXIMIZED(w))
 
 /* Constrain Window flags */
@@ -3357,13 +3358,13 @@ config_win(struct ws_win *win, xcb_configure_request_event_t *ev)
 }
 
 int
-count_win(struct workspace *ws, bool count_transient)
+count_win(struct workspace *ws, bool count_floating)
 {
 	struct ws_win		*win;
 	int			count = 0;
 
 	TAILQ_FOREACH(win, &ws->winlist, entry) {
-		if (!count_transient && FLOATING(win))
+		if (!count_floating && FLOATING(win))
 			continue;
 		if (ICONIC(win))
 			continue;
@@ -3508,11 +3509,11 @@ raise_window(struct ws_win *win)
 void
 update_win_stacking(struct ws_win *win)
 {
-	struct ws_win		*sibling;
 #ifdef SWM_DEBUG
 	struct ws_win		*w;
 #endif
 	struct swm_region	*r;
+	uint16_t		configure_mask;
 	uint32_t		val[2];
 
 	if (win == NULL || (r = win->ws->r) == NULL)
@@ -3524,25 +3525,25 @@ update_win_stacking(struct ws_win *win)
 		return;
 	}
 
-	sibling = TAILQ_NEXT(win, stack_entry);
-	if (sibling != NULL && (FLOATING(win) == FLOATING(sibling) ||
-	    (win->ws->always_raise && win->ws->focus == win))) {
-		val[0] = sibling->frame;
-		val[1] = XCB_STACK_MODE_ABOVE;
-	} else if (FLOATING(win) || (win->ws->always_raise &&
+        if (FLOATINGFULLMAX(win) || (win->ws->always_raise &&
 	    win->ws->focus == win)) {
-		val[0] = r->bar->id;
-		val[1] = XCB_STACK_MODE_ABOVE;
+		configure_mask = XCB_CONFIG_WINDOW_STACK_MODE;
+		val[0] = XCB_STACK_MODE_ABOVE;
+		val[1] = 0;
+
+		DNPRINTF(SWM_D_EVENT, "update_win_stacking: to very top "
+		    "win %#x (%#x), ", win->frame, win->id);
 	} else {
+		configure_mask = XCB_CONFIG_WINDOW_STACK_MODE |
+			XCB_CONFIG_WINDOW_SIBLING;
 		val[0] = r->bar->id;
 		val[1] = XCB_STACK_MODE_BELOW;
+
+		DNPRINTF(SWM_D_EVENT, "update_win_stacking: to tile top "
+		    "win %#x (%#x), ", win->frame, win->id);
 	}
 
-	DNPRINTF(SWM_D_EVENT, "update_win_stacking: win %#x (%#x), "
-	    "sibling %#x mode %#x\n", win->frame, win->id, val[0], val[1]);
-
-	xcb_configure_window(conn, win->frame, XCB_CONFIG_WINDOW_SIBLING |
-	    XCB_CONFIG_WINDOW_STACK_MODE, val);
+	xcb_configure_window(conn, win->frame, configure_mask, val);
 
 #ifdef SWM_DEBUG
 	TAILQ_FOREACH(w, &win->ws->winlist, entry)
@@ -5362,7 +5363,7 @@ stack_master(struct workspace *ws, struct swm_geometry *g, int rot, bool flip)
 		if (ICONIC(win))
 			continue;
 
-		if (FLOATING(win)) {
+		if (FLOATINGFULLMAX(win)) {
 			update_floater(win);
 			continue;
 		}
@@ -5600,15 +5601,13 @@ max_stack(struct workspace *ws, struct swm_geometry *g)
 {
 	struct swm_geometry	gg = *g;
 	struct ws_win		*w, *win = NULL, *parent = NULL, *tmpw;
-	int			winno;
 
 	DNPRINTF(SWM_D_STACK, "max_stack: workspace: %d\n", ws->idx);
 
 	if (ws == NULL)
 		return;
 
-	winno = count_win(ws, false);
-	if (winno == 0 && count_win(ws, true) == 0)
+	if (count_win(ws, true) == 0)
 		return;
 
 	/* Figure out which top level window should be visible. */
